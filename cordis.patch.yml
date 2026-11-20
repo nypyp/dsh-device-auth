@@ -1,0 +1,23 @@
+# dsh-device-auth bundle layer.
+#
+# 1. Insert the Host plugin that accepts durable per-device tokens in addition
+#    to this process's launch token.
+# 2. Stop printing the launch URL: it is the only place the rotating launch
+#    token reaches the journal. With this layer a device login link is printed
+#    explicitly by `dsh-auth add|rotate`, which satisfies "credentials never
+#    appear in logs unless an explicit command prints them".
+#
+# `config` is replaced wholesale by a patch, so the web-runtime row restates
+# every field of the shipped config (the command-line wiring is unchanged).
+- insert:
+    - id: device-auth
+      name: 'dsh-device-auth'
+      config:
+        storePath: !!js dshHomePath('remote-auth.json')
+- id: web-runtime
+  name: '@deepseek-ai/dsh-web-app'
+  config:
+    openBrowser: !!js ctx.webStartup.openBrowser
+    printUrl: false
+    publicUrl: !!js ctx.webStartup.publicUrl
+    surfaceContext: true

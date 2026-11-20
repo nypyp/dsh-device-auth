@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Device credentials",
+    "description": "Stable, revocable per-device login tokens so paired devices reconnect after a restart without copying the rotating launch token."
+  }
+}

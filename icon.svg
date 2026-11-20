@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128" role="img" aria-label="Device credentials">
+  <defs>
+    <linearGradient id="bg" x1="16" y1="8" x2="112" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#4d6bfe"/>
+      <stop offset="1" stop-color="#2a3fae"/>
+    </linearGradient>
+    <linearGradient id="glow" x1="64" y1="30" x2="64" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.95"/>
+      <stop offset="1" stop-color="#dfe6ff" stop-opacity="0.85"/>
+    </linearGradient>
+  </defs>
+  <rect x="4" y="4" width="120" height="120" rx="28" fill="url(#bg)"/>
+  <rect x="10" y="10" width="108" height="108" rx="23" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/>
+  <g fill="none" stroke="url(#glow)" stroke-linecap="round" stroke-linejoin="round">
+    <rect x="34" y="26" width="60" height="76" rx="12" stroke-width="6"/>
+    <path d="M34 44h60" stroke-width="6" stroke-opacity="0.65"/>
+    <circle cx="64" cy="64" r="9.5" stroke-width="5.5"/>
+    <path d="M64 73.5v16" stroke-width="5.5"/>
+    <path d="M57.5 82.5H64" stroke-width="4.5" stroke-opacity="0.8"/>
+  </g>
+</svg>
