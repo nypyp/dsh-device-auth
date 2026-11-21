@@ -1,7 +1,7 @@
 # dsh-device-auth 沙箱验收（acceptance）
 
 `test/acceptance.sh` 在 **隔离沙箱** 里用 `--patch` overlay 挂载本插件、启动一个临时
-`dsh web`（默认 `:3099`），然后对真实 HTTP 端点跑 T1–T12。它验证的是「真实 Harness
+`dsh web`（默认 `:3099`），然后对真实 HTTP 端点跑 T1–T14。它验证的是「真实 Harness
 进程 + 真实 connection/BrowserAuth 代码路径」，不是进程内 fake（后者见
 `test/unit.test.mjs`）。
 
@@ -14,12 +14,11 @@
 | 不用 `:3080` | `PORT == PROD_PORT` 直接拒绝运行 |
 | 只写沙箱与 test/ | `SANDBOX` 必须是 `/tmp` 下的安全绝对路径，且不得与生产 home / `$HOME` 重叠 |
 | 不误杀 | 只按 PID kill；**不用** `pkill -f`（`-f` 会匹配到脚本自身命令行） |
-| 不碰插件源码 | 本脚本只读插件文件 |
+| 不碰插件源码 | 本脚本只读插件文件（仓库内，`PLUGIN_INDEX` 默认 `lib/index.js`） |
 
 ## 运行
 
 ```sh
-cd plugins/dsh-device-auth
 ./test/acceptance.sh
 ```
 
@@ -168,3 +167,13 @@ cd plugins/dsh-device-auth
 
 > `evidence/` 与 `cli-*.out` 含 **明文设备令牌**（这是 `add`/`rotate` 显式输出的一次性
 > 令牌）；仅用于本地排查，不要保留在共享环境。store 本身只含哈希。
+
+
+## 0.2.0 新增用例
+
+| ID | 断言 | 期望 |
+|---|---|---|
+| T13 | 撤销设备后，用该设备**已签发的 `/connect` cookie** 再请求 `/api/` | 401（撤销前为 404） |
+| T14 | 撤销设备后，用该设备**已签发的浏览器 cookie** 请求 `/` | 401（撤销前为 200） |
+
+这两项验证 R3 的「撤销即时生效」：不仅旧设备令牌不能再换取 cookie，已经拿到的会话 cookie 也在下一次请求被拒绝。实现见 `lib/sessions.mjs`（cookie→设备索引，仅存哈希）。

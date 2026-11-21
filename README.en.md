@@ -17,7 +17,7 @@ DeepSeek Harness mints one random Web launch token per process and prints it onc
 
 - **Stable**: one long-lived token per device; survives `dsh web` restarts, reboots, and `npm i -g @deepseek-ai/dsh@<next>`.
 - **Rotatable**: re-issuing for the same device rotates in place; the old token receives 401 on its next request.
-- **Per device**: `dsh-auth list / revoke`; one credential per device, revocable individually.
+- **Per device and immediately revoked**: `dsh-auth list / revoke`; one credential per device, and a revoked device's **already-minted cookie is rejected on its next request**, not only when it tries to exchange again.
 - **No credentials in logs**: the bundle layer turns off the printed launch URL; a token is shown once, only by an explicit `dsh-auth add|rotate`.
 - **Zero regression**: a device token is swapped for the process launch token and handed to the original implementation. `/?token=`, 302/303 redirects, the 30-day signed cookie, the Host/Origin fence, `--trusted-host` and `--public-url` all behave exactly as before.
 - **Self-contained**: no runtime dependencies and no build step; the server stores only SHA-256 hashes.
@@ -76,6 +76,8 @@ The plugin wraps `connection.authorizeConnect` / `authorizeIndex`, which are cal
 
 The store is read-only for the plugin. Rotation and revocation are performed by the CLI under a cross-process lock and written atomically, so a stale in-process snapshot can never resurrect a revoked device.
 
+A separate session index records a hash of every cookie minted during a device exchange, with the device id. The plugin wraps `admit` and `authorizeIndex` so a cookie whose device was revoked is refused on its very next request; launch-token cookies have no entry and are delegated to the original check.
+
 See [docs/DESIGN.md](docs/DESIGN.md) for the threat model, OpenChamber mapping, and upgrade strategy.
 
 ## Compatibility
@@ -90,7 +92,7 @@ Activation probes the required service methods; on a future DSH version that ren
 
 ## Known limits
 
-1. **Revocation is not an instant disconnect**: DSH's 30-day cookie carries no device id (single owner principal), so revocation guarantees the device cannot mint a *new* cookie; a cookie it already holds stays valid until expiry. Stronger eviction needs a self-minted cookie with a device id plus an `admit` wrapper — a private format with upgrade risk, intentionally not implemented.
+1. **Scope of immediate revocation**: the plugin indexes every cookie minted by a device exchange (SHA-256 of the cookie pair + device id) and rejects those cookies on the next request once the device is revoked. Two kinds of cookies cannot be attributed: owner sessions minted with the real launch token, and cookies minted before this plugin was installed/updated. Those keep working until they expire. If the session index is lost, such cookies fall back to the original authentication (no false rejection, but the corresponding device is not evicted either).
 2. Every device is an owner: DSH has no per-device permission model, so "per device" here means credential-level only.
 3. Device tokens are stored in plaintext on the client (secure storage / DSH Go config); the server keeps only hashes.
 4. One-time pairing codes are not implemented (DSH Go only exchanges `token=`).

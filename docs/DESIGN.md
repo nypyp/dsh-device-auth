@@ -54,6 +54,38 @@ flow, including the Host/Origin fence, the authority-bound cookie name and
 payload, and the 30-day lifetime. The wrapper never mints cookies, never touches
 `BrowserAuth`, and never weakens a comparison.
 
+### Immediate revocation (session index)
+
+Wrapping only the exchange endpoints would mean "a revoked device cannot obtain
+a *new* cookie", while a cookie it already holds keeps working for up to 30
+days. To close that gap the plugin also wraps `admit` (the documented
+per-request admission method) and `authorizeIndex`, plus a derived session
+index:
+
+1. whenever an exchange mints cookies for a device token, the plugin records
+   `sha256(<cookie-name>=<cookie-value>)` together with the device id in
+   `remote-auth-sessions.json` (beside the store, `0600`, hashes only);
+2. on every later request the plugin hashes the presented cookies and compares
+   them with the index; a cookie mapped to a revoked or removed device makes
+   `admit` answer `401` and `authorizeIndex` write the original 401 shape;
+3. cookies that are not in the index — owner sessions minted with the real
+   launch token, and cookies minted before this plugin existed — are delegated
+   to the original authentication, so the launch-token and upgrade paths do not
+   regress.
+
+The index is deliberately a **rejection-only** cache:
+
+- it never authenticates anything; a hit only decides "was this session minted
+  for a device that is no longer active";
+- a missing, unreadable or partially-written index degrades to "delegate to the
+  original check", never to a bypass;
+- the CLI keeps entries on `revoke` (that entry *is* the evidence that the
+  cookie belongs to the revoked device) and drops them on `purge`, where the
+  device record is gone and the mapping would deny anyway;
+- entries are keyed by `(cookieHash, deviceId)` so two devices whose exchange
+  produced the same cookie value still both remain mapped, and revoking either
+  one denies it.
+
 ### Why the store is not the cookie
 
 Keeping the device token separate from the browser cookie is deliberate:
@@ -89,7 +121,7 @@ effective immediately for new exchanges.
 
 ## Verification
 
-`test/unit.test.mjs` (9 tests, no DSH needed):
+`test/unit.test.mjs` (13 tests, no DSH needed):
 
 - hash-only persistence, file/dir modes;
 - exact matching, foreign/expired/revoked rejection;
@@ -98,6 +130,9 @@ effective immediately for new exchanges.
 - serialized concurrent writers;
 - wrapper substitution, request-URL restoration, unknown-token delegation,
   revocation within one process, unload restoration;
+- session index: Set-Cookie parsing, hash-only persistence, pruning, per-device
+  dedupe, and revocation refusing an already-minted cookie through both `admit`
+  and `authorizeIndex`, while a missing index delegates;
 - loud failure when the connection service changes shape, and required
   `storePath`.
 
@@ -107,6 +142,8 @@ effective immediately for new exchanges.
 - browser `/?token=` → 303 + v1 cookie → `GET /` 200 `text/html`;
 - real launch token still 302; bogus 401; foreign Host 403;
 - rotate → old 401 / new 302; revoke → 401; **restart** → device token still 302;
+- revoke → the device's already-minted `/api` cookie and browser cookie both
+  answer 401 on the next request (T13/T14);
 - store and logs contain no plaintext token; `printUrl:false` leaves no launch
   URL in the log.
 
@@ -133,7 +170,9 @@ restart, and no `dsh web: http` line after installation.
 
 ## Open questions
 
-- Should revocation also evict a device's live cookie (self-minted cookie with a
-  device id + `admit` wrapper)? Adds a private cookie format and upgrade risk.
+- Should the session index also cover cookies minted with the real launch token
+  (owner sessions)? They carry no device identity, so there is nothing to
+  attribute to a device; deciding otherwise would break the zero-regression
+  promise.
 - Would a one-time pairing code help browser onboarding for users who do not
   want a long-lived token in a URL? DSH Go cannot consume it today.

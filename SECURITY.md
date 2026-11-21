@@ -23,8 +23,9 @@ a minimal reproduction. Please do not attach real tokens or store files.
 - Only `dsh_dev_` tokens that match an active store record are substituted. All
   other requests — including the real launch token, expired and revoked device
   tokens — are delegated to the original implementation.
-- The plugin never writes the store, so a stale in-process snapshot cannot
-  resurrect a revoked device.
+- The plugin never writes the device store, so a stale in-process snapshot
+  cannot resurrect a revoked device. It only appends cookie hashes to the
+  derived session index.
 - The plugin never logs credentials. The bundle layer disables the startup URL
   line so a usable launch token is not written to the journal.
 
@@ -34,10 +35,13 @@ a minimal reproduction. Please do not attach real tokens or store files.
   that can read that user's files or environment can already read the store,
   the session logs, or attach to the process; this plugin does not claim
   protection against a compromised local account.
-- DSH's 30-day cookie has no device id (single owner principal). Revocation
-  prevents a device from minting a new cookie but does not instantly evict a
-  cookie it already holds. This is documented behavior of the base product, not
-  a plugin guarantee.
+- Revocation is enforced synchronously: the plugin records only a SHA-256 hash
+  of each cookie minted during a device exchange and rejects cookies mapped to a
+  revoked device on their next request (both `/api` and the browser page).
+  Cookies minted with the real launch token, and cookies minted before the
+  plugin was installed, carry no device mapping and keep working until expiry.
+  The session index is a rejection-only cache: losing it degrades to the
+  original authentication, never to a bypass.
 - Device tokens are stored in plaintext on the client side (secure storage /
   client configuration), mirroring the base product and comparable tools. The
   server side keeps only hashes.

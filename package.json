@@ -1,6 +1,6 @@
 {
   "name": "dsh-device-auth",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Stable, revocable per-device login tokens for the DeepSeek Harness Web UI — paired clients survive restarts without copying the rotating launch token",
   "icon": "icon.svg",
   "type": "module",
@@ -66,7 +66,7 @@
     "test": "node --test \"test/*.test.mjs\"",
     "test:unit": "node --test \"test/unit.test.mjs\"",
     "test:acceptance": "bash test/acceptance.sh",
-    "check": "node --check lib/index.js && node --check lib/store.mjs && node --check bin/dsh-auth.mjs && bash -n test/acceptance.sh",
+    "check": "node --check lib/index.js && node --check lib/store.mjs && node --check lib/sessions.mjs && node --check bin/dsh-auth.mjs && bash -n test/acceptance.sh",
     "pack:check": "npm pack --dry-run"
   }
 }

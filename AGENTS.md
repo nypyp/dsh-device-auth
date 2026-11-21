@@ -14,6 +14,7 @@ in the user's profile and wraps two `connection` service methods at runtime.
 |---|---|
 | `lib/index.js` | Host plugin: wraps `authorizeConnect` / `authorizeIndex`. |
 | `lib/store.mjs` | Credential store: hashing, constant-time compare, atomic write, lock. |
+| `lib/sessions.mjs` | Derived cookie→device index powering immediate revocation. |
 | `bin/dsh-auth.mjs` | Management CLI (`add/rotate/revoke/list/purge`). |
 | `cordis.patch.yml` | Bundle layer: inserts the plugin row + disables `printUrl`. |
 | `locale/*.json` | Plugin Manager display metadata (`meta.title`, `meta.description`). |
@@ -26,7 +27,8 @@ in the user's profile and wraps two `connection` service methods at runtime.
   `~/.dsh` from this repository's tooling. Install/uninstall goes through
   `dsh plugin` or the Plugin Manager.
 - The plugin must stay read-only on the credential store. Mutations belong to
-  the CLI under the lock in `lib/store.mjs`.
+  the CLI under the lock in `lib/store.mjs`. The session index is derived state:
+  the plugin may append hashes, the CLI prunes them with the device records.
 - Never log, print, or persist a plaintext token outside the explicit
   `add`/`rotate` output. Keep `printUrl` disabled in the bundle patch.
 - Keep the real launch-token path working untouched: unknown tokens must be

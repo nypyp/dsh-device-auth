@@ -20,7 +20,7 @@ DeepSeek Harness 的 Web 启动令牌（launch token）由进程在每次启动�
 
 - **稳定**：每台设备一条长期令牌，`dsh web` 重启、机器重启、`npm i -g @deepseek-ai/dsh@新版本` 都不需要重配。
 - **可轮换**：同一设备重新签发即原地轮换，旧令牌下一个请求立即 401。
-- **按设备**：`dsh-auth list / revoke`，一台设备一个凭据，可单独撤销。
+- **按设备、撤销即生效**：`dsh-auth list / revoke`，一台设备一个凭据；撤销后该设备**已经拿到的 cookie 也在下一次请求被拒绝**（不只是不能再换取）。
 - **不落日志**：bundle 层关闭启动 URL 打印；令牌只在显式 `dsh-auth add|rotate` 时显示一次。
 - **零回归**：只在设备令牌命中时把请求交回原实现；原 `/?token=`、302/303、30 天签名 cookie、Host/Origin fence、`--trusted-host`、`--public-url` 全部保持原行为。
 - **自包含**：没有运行时依赖、没有构建步骤；服务端只保存 SHA-256 哈希。
@@ -83,7 +83,8 @@ CLI 默认读写 `$DSH_HOME/remote-auth.json`（未设置时为 `~/.dsh/remote-a
 
 - 插件包装 `connection` 服务的 `authorizeConnect` / `authorizeIndex`（两者在请求时被动态调用），只对以 `dsh_dev_` 开头且命中设备表的令牌生效；
 - 真实 launch token 通过公开服务方法 `authenticatedUrl()` 读取，不改造、不替换；
-- 设备表只读：插件不写文件，轮换/撤销由 CLI 在跨进程锁下原子写入，因此不存在"旧快照复活已撤销设备"。
+- 设备表只读：插件不写文件，轮换/撤销由 CLI 在跨进程锁下原子写入，因此不存在"旧快照复活已撤销设备"；
+- 撤销即时生效：插件把设备交换签发的 cookie 以 SHA-256 记入 `remote-auth-sessions.json`（同样 0600、只存哈希），并包装 `admit` / `authorizeIndex`——命中已撤销设备的 cookie 直接 401；真实 launch token 的 cookie 不在索引里，原样委托（零回归）。
 
 更细的机制、威胁模型与升级策略见 [docs/DESIGN.md](docs/DESIGN.md)。
 
@@ -109,7 +110,7 @@ CLI 默认读写 `$DSH_HOME/remote-auth.json`（未设置时为 `~/.dsh/remote-a
 
 ## 已知边界
 
-1. **撤销不等于"立即踢线"**：DSH 的 30 天 cookie 不含设备 id（单一 owner 主体），撤销只保证该设备**无法再换取**新 cookie；它手里未过期的 cookie 在到期前仍有效。更强的踢线需要自铸带设备 id 的 cookie 并包装 `admit`，属私有格式、升级有断裂风险，默认不做。
+1. **撤销即时生效的范围**：插件把「设备交换时签发的 cookie」以哈希建立了索引，撤销后这些 cookie 的下一次请求即 401（`/api` 与浏览器页面都覆盖）。但有两类 cookie 无法归属到设备：① 用真实 launch token 登录的 owner 会话；② 插件安装/升级前就已签发的旧 cookie。它们不受设备撤销影响，直到过期。若会话索引文件丢失，上述 cookie 会退回"交给原鉴权"的行为（不会误拒合法会话，但也不会踢掉对应设备）。
 2. 所有设备都是 owner 级权限——DSH 没有 per-device 权限模型，本插件的"按设备"只到凭据维度。
 3. 设备令牌在客户端侧明文保存（手机安全存储 / DSH Go 配置）；服务端只存哈希。
 4. 未实现一次性配对码（DSH Go 只会用 `token=` 换取，没有配对码消费者）。

@@ -26,6 +26,17 @@ import {
   hashToken,
 } from '../lib/store.mjs'
 import { apply } from '../lib/index.js'
+import {
+  cookiePairsFromHeader,
+  hashCookiePair,
+  mergeSession,
+  readSessionsFile,
+  removeSessionsForDevice,
+  resolveSessionsPath,
+  pruneSessions,
+  sessionFromSetCookie,
+  writeSessionsFile,
+} from '../lib/sessions.mjs'
 
 const REAL_TOKEN = 'ZcUjRealProcessLaunchToken0123456789abcdefghij'
 
@@ -44,7 +55,8 @@ function mint(storePath, label, options) {
 
 /** A minimal connection service that behaves like the shipped one for the tested paths. */
 function fakeConnection(realToken = REAL_TOKEN) {
-  const calls = { connect: [], index: [] }
+  const calls = { connect: [], index: [], admit: [] }
+  let minted = 0
   const connection = {
     authenticatedUrl(baseUrl) {
       const url = new URL(baseUrl)
@@ -60,8 +72,15 @@ function fakeConnection(realToken = REAL_TOKEN) {
         response.end('unauthorized')
         return
       }
-      response.writeHead(302, { location: './api/remote.mux', 'set-cookie': 'dsh-auth-test=1' })
+      minted += 1
+      response.writeHead(302, { location: './api/remote.mux', 'set-cookie': `dsh-auth-test=cookie-${String(minted)}` })
       response.end()
+    },
+    admit(request) {
+      const cookie = request.headers instanceof Headers ? request.headers.get('cookie') : request.headers?.cookie
+      calls.admit.push(cookie ?? null)
+      if (typeof cookie === 'string' && cookie.includes('dsh-auth-test=')) return { peer: { id: 'browser' } }
+      return { rejection: 401 }
     },
     authorizeIndex(request, response) {
       calls.index.push({ url: request.url, host: request.headers instanceof Headers ? request.headers.get('host') : request.headers?.host })
@@ -231,7 +250,7 @@ test('wrapper: device tokens are swapped for the real launch token, others are u
       const ok = responseSpy()
       connection.authorizeConnect({ url: `/connect?token=${token}`, headers: { host: '127.0.0.1:3099' } }, ok)
       assert.equal(ok.status, 302)
-      assert.equal(ok.headers['set-cookie'], 'dsh-auth-test=1')
+      assert.match(ok.headers['set-cookie'], /^dsh-auth-test=cookie-/u)
       assert.equal(calls.connect.at(-1).url, `/connect?token=${REAL_TOKEN}`)
       // The wrapper restores the incoming URL afterwards.
       const request = { url: `/connect?token=${token}`, headers: { host: '127.0.0.1:3099' } }
@@ -280,7 +299,118 @@ test('wrapper: refuses to activate when the connection service changes shape', (
     const { connection } = fakeConnection()
     delete connection.authorizeIndex
     const { ctx } = fakeCtx(connection)
-    assert.throws(() => apply(ctx, { storePath }), /does not expose authorizeConnect\/authorizeIndex/u)
+    assert.throws(() => apply(ctx, { storePath }), /no longer exposes authorizeConnect/u)
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('sessions: Set-Cookie parsing, hashing and cookie-header parsing', () => {
+  const parsed = sessionFromSetCookie('dsh-auth-abc=v1.payload.sig; Max-Age=2592000; Path=/; HttpOnly; SameSite=Strict', 1_000)
+  assert.equal(parsed.pair, 'dsh-auth-abc=v1.payload.sig')
+  assert.equal(parsed.expiresAt, new Date(1_000 + 2_592_000_000).toISOString())
+  assert.equal(sessionFromSetCookie('no-equals'), undefined)
+  assert.equal(parsed.pair.includes(';'), false)
+  assert.equal(hashCookiePair(parsed.pair).length, 64)
+  assert.deepEqual(cookiePairsFromHeader('a=1; dsh-auth-abc=v1.payload.sig'), ['a=1', 'dsh-auth-abc=v1.payload.sig'])
+  assert.deepEqual(cookiePairsFromHeader(''), [])
+})
+
+test('sessions: index keeps hashes only, dedupes and prunes', () => {
+  const { root, storePath } = sandbox()
+  try {
+    const sessionsPath = resolveSessionsPath(storePath)
+    const now = Date.now()
+    const sessions = []
+    const entry = {
+      cookieHash: hashCookiePair('dsh-auth-x=v1.a.b'),
+      deviceId: 'dev_one',
+      issuedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + 60_000).toISOString(),
+    }
+    assert.equal(mergeSession(sessions, entry), true)
+    assert.equal(mergeSession(sessions, entry), false)
+    assert.equal(sessions.length, 1)
+    const expired = { ...entry, cookieHash: hashCookiePair('dsh-auth-y=old'), expiresAt: '2000-01-01T00:00:00.000Z' }
+    assert.equal(mergeSession(sessions, expired), false)
+    assert.equal(pruneSessions([...sessions, expired]).length, 1)
+    writeSessionsFile(sessionsPath, sessions)
+    const raw = readFileSync(sessionsPath, 'utf8')
+    assert.ok(!raw.includes('dsh-auth-x=v1.a.b'), 'cookie plaintext must not be persisted')
+    assert.ok(raw.includes(hashCookiePair('dsh-auth-x=v1.a.b')))
+    assert.equal(statSync(sessionsPath).mode & 0o777, 0o600)
+    assert.deepEqual(readSessionsFile(sessionsPath).sessions.length, 1)
+    assert.equal(removeSessionsForDevice(sessions, 'dev_one'), 1)
+    assert.equal(sessions.length, 0)
+    assert.deepEqual(readSessionsFile(resolveSessionsPath(storePath, '/nonexistent/none.json')).sessions, [])
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('wrapper: revoked device session is rejected by admit and index', () => {
+  const { root, storePath } = sandbox()
+  try {
+    const { token, device } = mint(storePath, 'phone')
+    const { connection } = fakeConnection()
+    const { ctx, dispose } = fakeCtx(connection)
+    apply(ctx, { storePath })
+    try {
+      const connect = responseSpy()
+      connection.authorizeConnect({ url: `/connect?token=${token}`, headers: { host: '127.0.0.1:3099' } }, connect)
+      assert.equal(connect.status, 302)
+      const cookie = connect.headers['set-cookie']
+      assert.match(cookie, /^dsh-auth-test=cookie-/u)
+      const sessionsPath = resolveSessionsPath(storePath)
+      assert.equal(readSessionsFile(sessionsPath).sessions.length, 1, 'exchange records one session')
+      assert.equal(hashCookiePair(cookie).length, 64)
+
+      // Active device: delegate to the original admit (which accepts the cookie).
+      assert.deepEqual(connection.admit({ headers: { cookie } }), { peer: { id: 'browser' } })
+      // Unknown cookies are delegated, not judged by this plugin.
+      assert.deepEqual(connection.admit({ headers: { cookie: 'other=1' } }), { rejection: 401 })
+
+      // Revoke: the very next request with the already-minted cookie is refused.
+      {
+        const { store } = readStoreFile(storePath)
+        revokeDevice(store, device.id)
+        writeStoreFile(storePath, store)
+      }
+      assert.deepEqual(connection.admit({ headers: { cookie } }), { rejection: 401 })
+
+      // The browser index path is refused too, with the original 401 shape.
+      const indexResponse = responseSpy()
+      const indexRequest = new Request('http://127.0.0.1:3099/', { headers: { cookie, host: '127.0.0.1:3099' } })
+      assert.equal(connection.authorizeIndex(indexRequest, indexResponse), false)
+      assert.equal(indexResponse.status, 401)
+
+      // A live device is unaffected by another device's revocation.
+      const other = mint(storePath, 'tablet')
+      const otherConnect = responseSpy()
+      connection.authorizeConnect({ url: `/connect?token=${other.token}`, headers: { host: '127.0.0.1:3099' } }, otherConnect)
+      assert.equal(otherConnect.status, 302)
+      assert.deepEqual(connection.admit({ headers: { cookie } }), { rejection: 401 })
+    } finally {
+      dispose()
+    }
+  } finally {
+    rmSync(root, { recursive: true, force: true })
+  }
+})
+
+test('wrapper: missing session index delegates to the original authentication', () => {
+  const { root, storePath } = sandbox()
+  try {
+    const { connection } = fakeConnection()
+    const { ctx, dispose } = fakeCtx(connection)
+    apply(ctx, { storePath })
+    try {
+      // No sessions file at all: the wrapper must not invent a rejection.
+      assert.deepEqual(connection.admit({ headers: { cookie: 'dsh-auth-test=1' } }), { peer: { id: 'browser' } })
+      assert.deepEqual(connection.admit({}), { rejection: 401 })
+    } finally {
+      dispose()
+    }
   } finally {
     rmSync(root, { recursive: true, force: true })
   }

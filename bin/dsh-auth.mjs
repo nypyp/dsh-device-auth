@@ -34,6 +34,13 @@ import {
   withStoreLock,
   writeStoreFile,
 } from '../lib/store.mjs'
+import {
+  readSessionsFile,
+  removeSessionsForDevice,
+  resolveSessionsPath,
+  pruneSessions,
+  writeSessionsFile,
+} from '../lib/sessions.mjs'
 
 const HELP = `dsh-auth — manage per-device credentials for the DSH Web UI
 
@@ -123,6 +130,26 @@ function printList(devices, json) {
   }
 }
 
+/** Remove the session entries belonging to one device (or all when deviceId is undefined). */
+function pruneSessionIndex(storePath, deviceId) {
+  const sessionsPath = resolveSessionsPath(storePath)
+  let current
+  try {
+    current = readSessionsFile(sessionsPath).sessions
+  } catch {
+    return 0
+  }
+  if (current.length === 0) return 0
+  const before = current.length
+  if (deviceId === undefined) {
+    writeSessionsFile(sessionsPath, [])
+    return before
+  }
+  const removed = removeSessionsForDevice(current, deviceId)
+  if (removed > 0) writeSessionsFile(sessionsPath, pruneSessions(current))
+  return removed
+}
+
 async function main(argv) {
   const parsed = parseArgs(argv)
   if (parsed.help === true) {
@@ -142,8 +169,10 @@ async function main(argv) {
   if (command === 'purge') {
     const removed = await withStoreLock(storePath, async () => {
       const { store } = readStoreFile(storePath)
+      const purged = store.devices.filter((device) => device.revokedAt !== null).map((device) => device.id)
       const count = purgeRevokedDevices(store)
       if (count > 0) writeStoreFile(storePath, store)
+      for (const deviceId of purged) pruneSessionIndex(storePath, deviceId)
       return count
     })
     if (options.json) console.log(JSON.stringify({ removed }))

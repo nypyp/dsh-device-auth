@@ -47,7 +47,7 @@ WAIT_READY_SECONDS=${WAIT_READY_SECONDS:-60}
 COPY_STORAGES=${COPY_STORAGES:-1}
 STORAGES_MAX_MB=${STORAGES_MAX_MB:-64}
 
-ALL_IDS=(T1 T2 T3 T4 T5 T6 T7 T8 T9 T10 T11 T12)
+ALL_IDS=(T1 T2 T3 T4 T5 T6 T7 T13 T14 T8 T9 T10 T11 T12)
 
 DSH_BIN=${DSH_BIN:-$(command -v dsh 2>/dev/null || true)}
 NODE_BIN=${NODE_BIN:-$(command -v node 2>/dev/null || true)}
@@ -617,6 +617,24 @@ console.log(`status=${device.status} revokedAt=${device.revokedAt} ${revoked ? "
       record T7 FAIL "token -> $code_rev (exp 401); list: $list_check"
     fi
   fi
+fi
+
+# ---- T13 撤销即时生效：已签发的 /api cookie 下一次请求即 401 ------------
+info "T13 revoked device API cookie is rejected on the next request"
+code_api_rev=$(fetch t13-api "$JAR_T2" "$BASE/api/")
+if [ "$code_api_rev" = "401" ]; then
+  record T13 PASS "revoked phone: 已签发的 /connect cookie 再请求 /api/ -> 401（撤销前为 404）"
+else
+  record T13 FAIL "revoked phone: /api/ with already-minted cookie -> $code_api_rev (expected 401)"
+fi
+
+# ---- T14 撤销即时生效：浏览器 v1 cookie 下一次请求即 401 -------------------
+info "T14 revoked device browser cookie is rejected on the next request"
+code_page_rev=$(fetch t14-page "$JAR_T4" "$BASE/")
+if [ "$code_page_rev" = "401" ]; then
+  record T14 PASS "revoked phone: 已签发的浏览器 cookie GET / -> 401（撤销前为 200）"
+else
+  record T14 FAIL "revoked phone: GET / with already-minted browser cookie -> $code_page_rev (expected 401)"
 fi
 
 # =============================================================================
