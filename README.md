@@ -138,6 +138,29 @@ dsh plugin --profile web remove dsh-device-auth   # 或 plugin_manager remove_bu
 
 回滚后行为回到基线（随机 launch token、启动 URL 照常打印）；`~/.dsh/remote-auth.json` 可保留或删除。
 
+## 发布（维护者）
+
+推送 `v*` tag 触发 [`.github/workflows/release.yml`](.github/workflows/release.yml)：
+
+```sh
+# 1) 确认 package.json 版本与 tag 一致
+npm version 0.2.2 --no-git-tag-version   # 或手改
+git commit -am "release: v0.2.2"
+git tag -a v0.2.2 -m "v0.2.2"
+git push origin main --tags
+```
+
+工作流会跑 check/单测/npm pack，然后 `npm publish --provenance`，在 npm 上生成可验证的 provenance 证明。发布认证使用仓库 secret `NPM_TOKEN`（npm granular token，仅授权 `dsh-device-auth` 的 publish 权限）。
+
+### 可选的更优方案：Trusted Publishing（OIDC，无长期 token）
+
+npm 官方推荐用 OIDC 代替长期 token。账号需要能在 npmjs.com 上完成 2FA：
+
+1. 登录 npmjs.com（账号 `nypyp`），打开 `https://www.npmjs.com/package/dsh-device-auth/settings`；
+2. **Trusted publishing** → 添加 GitHub Actions：仓库 `nypyp/dsh-device-auth`、workflow 文件名 `release.yml`（可留环境名空）；
+3. 或者在本机执行 `npm trust github dsh-device-auth --repo nypyp/dsh-device-auth --file release.yml --allow-publish -y`（需要交互式 2FA/邮箱验证码）；
+4. 配置完成后可以删除仓库 secret `NPM_TOKEN`，release workflow 会自动使用 OIDC（`id-token: write` 已就绪）。
+
 ## 参考与致谢
 
 设计参考了 [OpenChamber](https://github.com/openchamber/openchamber) 的设备凭据模型（不透明 bearer、服务端只存 SHA-256、同设备重发即轮换、按设备撤销）。感谢其 MIT 开源实现为这套方案提供了可直接对照的工程先例。

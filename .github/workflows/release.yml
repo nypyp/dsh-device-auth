@@ -1,0 +1,62 @@
+name: release
+
+# Publishes the package to npm when a version tag is pushed.
+#
+# Authentication: NPM_TOKEN repository secret (npm granular access token with
+# publish permission for dsh-device-auth). Provenance is signed by GitHub's
+# OIDC identity (`id-token: write`) and needs no npm-side configuration, so the
+# tarball gets a verifiable attestation either way.
+#
+# Trusted publishing (OIDC, no long-lived token) is the npm-recommended
+# alternative once the trusted publisher is registered on npmjs.com; see the
+# "Trusted publishing" section of README.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: publish to npm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+
+      - name: use the registry npm client
+        run: npm install --global npm@latest
+
+      - name: verify the tag matches package.json
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [ "v$version" != "$GITHUB_REF_NAME" ]; then
+            echo "tag $GITHUB_REF_NAME does not match package.json version $version" >&2
+            exit 1
+          fi
+
+      - name: checks
+        run: npm run check
+
+      - name: unit tests
+        run: npm test
+
+      - name: package contents
+        run: npm run pack:check
+
+      - name: publish
+        run: npm publish --access public --provenance
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

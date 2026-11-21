@@ -1,6 +1,6 @@
 {
   "name": "dsh-device-auth",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Stable, revocable per-device login tokens for the DeepSeek Harness Web UI — paired clients survive restarts without copying the rotating launch token",
   "icon": "icon.svg",
   "type": "module",

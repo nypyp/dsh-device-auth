@@ -117,6 +117,14 @@ dsh plugin --profile web remove dsh-device-auth   # or plugin_manager remove_bun
 
 Remove the bundle selection from the profile as well, then restart `dsh web`. Baseline behaviour (random launch token, startup URL printed) returns.
 
+## Releasing (maintainers)
+
+Pushing a `v*` tag runs [`.github/workflows/release.yml`](.github/workflows/release.yml): checks, unit tests, `npm pack` verification, then `npm publish --provenance` (signed with GitHub OIDC provenance). Authentication uses the `NPM_TOKEN` repository secret (a granular npm token scoped to publishing `dsh-device-auth`).
+
+### Optional, preferred: trusted publishing (OIDC, no long-lived token)
+
+Enable it on `https://www.npmjs.com/package/dsh-device-auth/settings` → **Trusted publishing** → GitHub Actions: repository `nypyp/dsh-device-auth`, workflow `release.yml`. Once registered, delete the `NPM_TOKEN` secret and the workflow publishes through OIDC (it already has `id-token: write`).
+
 ## Credits
 
 The credential model is inspired by [OpenChamber](https://github.com/openchamber/openchamber): an opaque random bearer stored server-side as SHA-256, in-place rotation for the same device, and per-device revocation.
