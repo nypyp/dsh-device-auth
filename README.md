@@ -3,6 +3,7 @@
 > 给 DeepSeek Harness Web UI 增加**稳定、可按设备撤销**的登录令牌：`dsh web` 重启后，已配对客户端不用再复制一次 43 位随机 launch token。
 
 [![ci](https://github.com/nypyp/dsh-device-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/nypyp/dsh-device-auth/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/dsh-device-auth)](https://www.npmjs.com/package/dsh-device-auth)
 ![license](https://img.shields.io/badge/license-MIT-2e8b57)
 ![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.2--rc.1%20%3C0.3.0--0-4d6bfe)
 [English](README.en.md)
@@ -34,14 +35,17 @@ DeepSeek Harness 的 Web 启动令牌（launch token）由进程在每次启动�
 ### 命令行
 
 ```sh
-# 发布到 npm 后
+# 从 npm 安装（0.2.0 起可用）
 dsh plugin --profile web add -w dsh-device-auth
+
+# 更新
+dsh plugin --profile web update dsh-device-auth@latest
 
 # 从本地目录安装（开发调试）
 dsh plugin --profile web add -w file:/absolute/path/to/dsh-device-auth
-
-systemctl --user restart dsh-web   # 或按你的部署方式重启
 ```
+
+安装/更新后 `dsh web` 会按新模块重新加载；若界面提示需要重启，重启一次即可。
 
 安装后插件所在的 bundle 层会同时把 `web-runtime.printUrl` 设为 `false`：启动日志不再出现带真实令牌的 URL。
 

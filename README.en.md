@@ -3,6 +3,7 @@
 > Stable, revocable per-device login tokens for the DeepSeek Harness Web UI — paired clients survive restarts instead of copying the rotating 43-character launch token again.
 
 [![ci](https://github.com/nypyp/dsh-device-auth/actions/workflows/ci.yml/badge.svg)](https://github.com/nypyp/dsh-device-auth/actions/workflows/ci.yml)
+[![npm version](https://img.shields.io/npm/v/dsh-device-auth)](https://www.npmjs.com/package/dsh-device-auth)
 ![license](https://img.shields.io/badge/license-MIT-2e8b57)
 ![dsh](https://img.shields.io/badge/dsh-%3E%3D0.2.2--rc.1%20%3C0.3.0--0-4d6bfe)
 [中文](README.md)
@@ -25,14 +26,17 @@ DeepSeek Harness mints one random Web launch token per process and prints it onc
 ## Install
 
 ```sh
-# from npm (after publishing)
+# from npm (available since 0.2.0)
 dsh plugin --profile web add -w dsh-device-auth
+
+# update
+dsh plugin --profile web update dsh-device-auth@latest
 
 # from a local checkout (development)
 dsh plugin --profile web add -w file:/absolute/path/to/dsh-device-auth
-
-systemctl --user restart dsh-web   # or however you restart your instance
 ```
+
+Installing or updating reloads the plugin through the normal loader path; restart `dsh web` only if the profile asks for it.
 
 The bundle patch also sets `web-runtime.printUrl: false`, so the startup log no longer contains a usable launch token. You can also install it from the Web GUI's **Plugins → Add plugin** search once the package is published.
 
